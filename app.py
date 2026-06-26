@@ -29,6 +29,8 @@ AI_NAME = "EduAI"
 MAX_MESSAGE_LENGTH = 1200
 MAX_HISTORY_MESSAGES = 20
 SEARCH_TIMEOUT = 8
+GROQ_BASE_URL = os.environ.get("GROQ_BASE_URL", "https://api.groq.com/openai/v1")
+GROQ_MODEL = os.environ.get("GROQ_MODEL", "llama-3.1-8b-instant")
 
 
 def get_history() -> List[Dict[str, str]]:
@@ -147,10 +149,10 @@ def generate_ai_response(user_message: str) -> Dict[str, Any]:
     try:
         client = OpenAI(
             api_key=api_key,
-            base_url=os.environ.get("GROQ_BASE_URL", "https://api.groq.com/openai/v1"),
+            base_url=GROQ_BASE_URL,
         )
         completion = client.chat.completions.create(
-            model=os.environ.get("GROQ_MODEL", "llama-3.1-8b-instant"),
+            model=GROQ_MODEL,
             messages=build_prompt(user_message, search_results),
             temperature=0.7,
             max_tokens=700,
