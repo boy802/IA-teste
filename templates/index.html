@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="EduAI, uma aplicação web de inteligência artificial com Flask.">
+  <title>{{ ai_name }} — Chat inteligente</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <main class="app-shell">
+    <aside class="hero-panel">
+      <div class="brand-badge">IA</div>
+      <h1>{{ ai_name }}</h1>
+      <p>Assistente educacional em português brasileiro, com contexto de conversa e pesquisa na internet quando necessário.</p>
+      <div class="stats-card">
+        <span>Mensagens enviadas</span>
+        <strong id="messageCount">0</strong>
+      </div>
+      <button id="clearChat" class="secondary-button" type="button">Limpar conversa</button>
+    </aside>
+
+    <section class="chat-panel" aria-label="Chat com EduAI">
+      <header class="chat-header">
+        <div>
+          <span class="status-dot"></span>
+          <strong>{{ ai_name }}</strong>
+          <small>online para aprender com você</small>
+        </div>
+      </header>
+
+      <div id="messages" class="messages" aria-live="polite">
+        <article class="message ai-message">
+          <div class="avatar">E</div>
+          <div class="bubble">
+            <p>Olá! Eu sou a EduAI. Faça uma pergunta, peça um resumo ou solicite uma pesquisa atual.</p>
+          </div>
+        </article>
+      </div>
+
+      <div id="typing" class="typing hidden">
+        <span></span><span></span><span></span>
+        EduAI está digitando...
+      </div>
+
+      <form id="chatForm" class="composer">
+        <textarea id="messageInput" maxlength="1200" rows="1" placeholder="Digite sua mensagem..." required></textarea>
+        <button type="submit" aria-label="Enviar mensagem">Enviar</button>
+      </form>
+      <small class="hint">Limite de 1200 caracteres por mensagem. A chave da Groq fica em variável de ambiente.</small>
+    </section>
+  </main>
+
+  <script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+</html>
