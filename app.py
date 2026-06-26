@@ -1,25 +1,17 @@
 """
 EduAI - assistente educacional com Flask e Groq.
 """
-
 from __future__ import annotations
 
 import logging
 import os
 import re
 from typing import Any
-from urllib.parse import parse_qs, quote_plus, unquote, urlparse
 
-import requests
-from bs4 import BeautifulSoup, __version__ as BS4_VERSION
 from flask import Flask, jsonify, render_template, request, session
-from openai import (
-    APIConnectionError,
-    APIStatusError,
-    APITimeoutError,
-    OpenAI,
-    RateLimitError,
-)
+
+from openai import OpenAI
+from tavily import TavilyClient
 
 # =========================
 # FLASK CONFIG
@@ -44,6 +36,12 @@ client = OpenAI(
     api_key=GROQ_API_KEY or "missing-groq-key",
     base_url=GROQ_BASE_URL,
 )
+
+# =========================
+# TAVILY (INTERNET)
+# =========================
+
+tavily_client = TavilyClient(api_key=os.getenv("TAVILY_API_KEY", ""))
 
 # =========================
 # PROMPT
@@ -94,79 +92,39 @@ def should_search_web(message: str) -> bool:
 def clean_text(text: str) -> str:
     return re.sub(r"\s+", " ", text).strip()
 
-
-def normalize_duckduckgo_url(url: str) -> str:
-    if not url:
-        return ""
-    if url.startswith("//"):
-        url = "https:" + url
-
-    parsed = urlparse(url)
-    target = parse_qs(parsed.query).get("uddg", [None])[0]
-    return unquote(target) if target else url
-
 # =========================
-# SEARCH ENGINE
+# WEB SEARCH (TAVILY)
 # =========================
 
-def search_web(query: str, max_results: int = 5) -> list[dict[str, str]]:
-    cleaned = clean_text(query)
-    if not cleaned:
-        raise SearchError("Consulta vazia")
-
-    url = f"https://html.duckduckgo.com/html/?q={quote_plus(cleaned)}"
-
-    headers = {
-        "User-Agent": (
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-            "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126 Safari/537.36"
-        ),
-        "Accept-Language": "pt-BR,pt;q=0.9",
-    }
-
-    logger.info("Search: %s", cleaned)
-
+def search_web(query: str, max_results: int = 5):
     try:
-        res = requests.get(url, headers=headers, timeout=(5, 15))
-        res.raise_for_status()
+        res = tavily_client.search(
+            query=query,
+            search_depth="basic",
+            max_results=max_results
+        )
+
+        return [
+            {
+                "title": r.get("title", ""),
+                "url": r.get("url", ""),
+                "snippet": r.get("content", "")
+            }
+            for r in res.get("results", [])
+        ]
+
     except Exception as e:
-        raise SearchError(str(e))
+        raise SearchError(f"Falha na busca web: {e}")
 
-    soup = BeautifulSoup(res.text, "html.parser")
-    results: list[dict[str, str]] = []
-
-    for item in soup.select(".result, .web-result, div.result.results_links"):
-        title_el = item.select_one(".result__title a, a.result__a")
-        snippet_el = item.select_one(".result__snippet, .result__body")
-
-        if not title_el:
-            continue
-
-        title = clean_text(title_el.get_text(" "))
-        link = normalize_duckduckgo_url(title_el.get("href", ""))
-        snippet = clean_text(snippet_el.get_text(" ") if snippet_el else "")
-
-        if title and link:
-            results.append({
-                "title": title,
-                "url": link,
-                "snippet": snippet
-            })
-
-        if len(results) >= max_results:
-            break
-
-    logger.info("Results: %s", len(results))
-    return results
-
+# =========================
+# CONTEXT BUILDER
+# =========================
 
 def build_web_context(results: list[dict[str, str]]) -> str:
     if not results:
         return ""
 
-    lines = [
-        "PESQUISA WEB REALIZADA. Use as fontes abaixo e cite URLs:"
-    ]
+    lines = ["Contexto de pesquisa web recente:"]
 
     for i, r in enumerate(results, 1):
         lines.append(
@@ -174,15 +132,6 @@ def build_web_context(results: list[dict[str, str]]) -> str:
         )
 
     return "\n\n".join(lines)
-
-# =========================
-# ERROR HANDLER
-# =========================
-
-def friendly_error(error: Exception) -> tuple[str, int]:
-    if not GROQ_API_KEY:
-        return "Falta GROQ_API_KEY", 503
-    return str(error), 500
 
 # =========================
 # ROUTES
@@ -216,13 +165,10 @@ def chat():
         try:
             web_results = search_web(message)
             web_context = build_web_context(web_results)
-
         except SearchError as e:
-            return jsonify({
-                "error": str(e),
-                "search_performed": True,
-                "sources": []
-            }), 502
+            logger.warning("Web falhou: %s", e)
+            web_results = []
+            web_context = ""
 
     messages = [{"role": "system", "content": SYSTEM_PROMPT}]
 
@@ -278,8 +224,6 @@ def health():
     return jsonify({
         "status": "ok",
         "model": GROQ_MODEL,
-        "requests": requests.__version__,
-        "bs4": BS4_VERSION,
     })
 
 
