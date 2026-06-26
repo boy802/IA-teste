@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>EduAI | Chat com Groq</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <main class="app-shell">
+    <aside class="sidebar">
+      <div>
+        <h1>EduAI</h1>
+        <p>Assistente educacional com IA, histórico por sessão e pesquisa web gratuita para temas recentes.</p>
+      </div>
+      <div class="stats">
+        <span>Mensagens</span>
+        <strong id="messageCount">{{ message_count }}</strong>
+      </div>
+      <button id="clearBtn" class="secondary-button" type="button">Limpar conversa</button>
+    </aside>
+
+    <section class="chat-panel" aria-label="Chat EduAI">
+      <header class="chat-header">
+        <div>
+          <span class="status-dot"></span>
+          <strong>EduAI</strong>
+        </div>
+        <small>Powered by Groq</small>
+      </header>
+
+      <div id="chatHistory" class="chat-history">
+        {% if history %}
+          {% for item in history %}
+            <article class="message {{ item.role }}">
+              <div class="avatar">{{ 'Você' if item.role == 'user' else 'AI' }}</div>
+              <p>{{ item.content }}</p>
+            </article>
+          {% endfor %}
+        {% else %}
+          <div class="empty-state">
+            <h2>Como posso ajudar nos seus estudos?</h2>
+            <p>Faça perguntas, peça explicações ou solicite pesquisa sobre assuntos atuais.</p>
+          </div>
+        {% endif %}
+      </div>
+
+      <div id="typing" class="typing" hidden>EduAI está digitando...</div>
+
+      <form id="chatForm" class="chat-form">
+        <textarea id="messageInput" rows="1" placeholder="Digite sua mensagem..." required></textarea>
+        <button id="sendBtn" type="submit">Enviar</button>
+      </form>
+    </section>
+  </main>
+  <script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+</html>
