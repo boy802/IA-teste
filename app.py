@@ -6,10 +6,12 @@ from __future__ import annotations
 import logging
 import os
 import re
+import threading
+import time
+import requests
 from typing import Any
 
 from flask import Flask, jsonify, render_template, request, session
-
 from openai import OpenAI
 from tavily import TavilyClient
 
@@ -167,8 +169,6 @@ def chat():
             web_context = build_web_context(web_results)
         except SearchError as e:
             logger.warning("Web falhou: %s", e)
-            web_results = []
-            web_context = ""
 
     messages = [{"role": "system", "content": SYSTEM_PROMPT}]
 
@@ -225,6 +225,35 @@ def health():
         "status": "ok",
         "model": GROQ_MODEL,
     })
+
+
+# =========================
+# PING ROUTE (KEEP ALIVE)
+# =========================
+
+@app.route("/ping")
+def ping():
+    print("[PING] endpoint acessado")
+    return "pong", 200
+
+
+# =========================
+# KEEP ALIVE SYSTEM
+# =========================
+
+URL = "https://ia-teste-wr43.onrender.com"
+
+def keep_alive():
+    while True:
+        try:
+            r = requests.get(URL + "/ping", timeout=10)
+            print(f"[KEEP-ALIVE] /ping -> {r.status_code}")
+        except Exception as e:
+            print(f"[KEEP-ALIVE] erro: {e}")
+
+        time.sleep(300)  # 5 minutos
+
+threading.Thread(target=keep_alive, daemon=True).start()
 
 
 # =========================
