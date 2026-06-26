@@ -408,6 +408,37 @@
       .bubble { max-width: 72%; }
     }
 
+    /* ── MARKDOWN INSIDE BUBBLES ── */
+    .bubble strong { font-weight: 600; color: #cbd5e1; }
+    .bubble em { font-style: italic; color: #94a3b8; }
+    .bubble h1, .bubble h2, .bubble h3 {
+      font-weight: 600;
+      margin: 10px 0 4px;
+      color: #e2e8f0;
+    }
+    .bubble h1 { font-size: 16px; }
+    .bubble h2 { font-size: 15px; }
+    .bubble h3 { font-size: 14px; }
+    .bubble ol, .bubble ul {
+      margin: 8px 0;
+      padding-left: 20px;
+    }
+    .bubble ol { list-style: decimal; }
+    .bubble ul { list-style: disc; }
+    .bubble li {
+      margin: 4px 0;
+      line-height: 1.6;
+    }
+    .bubble code {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 4px;
+      padding: 1px 5px;
+      font-family: 'Menlo', 'Consolas', monospace;
+      font-size: 12.5px;
+      color: #93c5fd;
+    }
+
     @media (prefers-reduced-motion: reduce) {
       * { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
     }
@@ -490,6 +521,27 @@
     sendMessage();
   }
 
+  function parseMarkdown(text) {
+    let t = text
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    // bold+italic, bold, italic
+    t = t.replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>');
+    t = t.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+    // numbered list lines -> wrap in ol
+    t = t.replace(/((?:^\d+\.\s.+$\n?)+)/gm, function(block) {
+      const items = block.trim().split('\n').map(l => '<li>' + l.replace(/^\d+\.\s+/, '') + '</li>').join('');
+      return '<ol>' + items + '</ol>';
+    });
+    // bullet lines -> wrap in ul
+    t = t.replace(/((?:^[\*\-]\s.+$\n?)+)/gm, function(block) {
+      const items = block.trim().split('\n').map(l => '<li>' + l.replace(/^[\*\-]\s+/, '') + '</li>').join('');
+      return '<ul>' + items + '</ul>';
+    });
+    // remaining newlines to <br>
+    t = t.replace(/\n/g, '<br>');
+    return t;
+  }
+
   function appendMessage(role, text) {
     if (welcome) welcome.style.display = 'none';
 
@@ -502,7 +554,11 @@
 
     const bubble = document.createElement('div');
     bubble.className = 'bubble';
-    bubble.textContent = text;
+    if (role === 'ai') {
+      bubble.innerHTML = parseMarkdown(text);
+    } else {
+      bubble.textContent = text;
+    }
 
     wrap.appendChild(avatar);
     wrap.appendChild(bubble);
