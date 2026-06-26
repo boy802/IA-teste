@@ -1,5 +1,5 @@
 """
-EduAI - assistente educacional com Flask e Groq.
+EduAI - assistente educacional com Flask e Groq/OpenAI compatível.
 """
 from __future__ import annotations
 
@@ -27,16 +27,16 @@ logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
 logger = logging.getLogger("eduai")
 
 # =========================
-# GROQ CONFIG
+# API CONFIG (GROQ / OPENAI / OPENROUTER COMPAT)
 # =========================
 
-GROQ_API_KEY = os.getenv("GROQ_API_KEY")
-GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.1-8b-instant")
-GROQ_BASE_URL = "https://api.groq.com/openai/v1"
+API_KEY = os.getenv("GROQ_API_KEY") or os.getenv("OPENROUTER_API_KEY") or ""
+BASE_URL = os.getenv("BASE_URL", "https://api.groq.com/openai/v1")
+MODEL = os.getenv("MODEL", "llama-3.1-8b-instant")
 
 client = OpenAI(
-    api_key=GROQ_API_KEY or "missing-groq-key",
-    base_url=GROQ_BASE_URL,
+    api_key=API_KEY,
+    base_url=BASE_URL,
 )
 
 # =========================
@@ -95,7 +95,7 @@ def clean_text(text: str) -> str:
     return re.sub(r"\s+", " ", text).strip()
 
 # =========================
-# WEB SEARCH (TAVILY)
+# WEB SEARCH
 # =========================
 
 def search_web(query: str, max_results: int = 5):
@@ -180,7 +180,7 @@ def chat():
 
     try:
         resp = client.chat.completions.create(
-            model=GROQ_MODEL,
+            model=MODEL,
             messages=messages,
             temperature=0.7,
             timeout=30,
@@ -223,27 +223,25 @@ def test_search():
 def health():
     return jsonify({
         "status": "ok",
-        "model": GROQ_MODEL,
+        "model": MODEL,
     })
 
 
-# =========================
-# PING ROUTE (KEEP ALIVE)
-# =========================
-
 @app.route("/ping")
 def ping():
-    print("[PING] endpoint acessado")
     return "pong", 200
 
 
 # =========================
-# KEEP ALIVE SYSTEM
+# KEEP ALIVE (SAFE VERSION)
 # =========================
 
-URL = "https://ia-teste-wr43.onrender.com"
+URL = os.getenv("RENDER_EXTERNAL_URL", "")
 
 def keep_alive():
+    if not URL:
+        return
+
     while True:
         try:
             r = requests.get(URL + "/ping", timeout=10)
@@ -251,7 +249,7 @@ def keep_alive():
         except Exception as e:
             print(f"[KEEP-ALIVE] erro: {e}")
 
-        time.sleep(300)  # 5 minutos
+        time.sleep(300)
 
 threading.Thread(target=keep_alive, daemon=True).start()
 
