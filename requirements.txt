@@ -1,6 +1,6 @@
-Flask==3.0.3
-gunicorn==22.0.0
-openai==1.40.6
-requests==2.32.3
-beautifulsoup4==4.12.3
+Flask
+gunicorn
+openai
+requests
+beautifulsoup4
 tavily-python
