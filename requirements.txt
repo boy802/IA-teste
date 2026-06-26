@@ -3,4 +3,4 @@ gunicorn==22.0.0
 openai==1.51.2
 requests==2.32.3
 beautifulsoup4==4.12.3
-tavily-python==0.5.5
+tavily-python
