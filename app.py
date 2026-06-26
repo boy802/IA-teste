@@ -12,6 +12,7 @@ from typing import Any, Dict, List
 import requests
 from bs4 import BeautifulSoup
 from flask import Flask, jsonify, render_template, request, session
+ codex/criar-aplicacao-web-eduai-com-flask-up9yx1
 from openai import (
     APIConnectionError,
     APIStatusError,
@@ -21,6 +22,9 @@ from openai import (
     RateLimitError,
 )
 
+from openai import OpenAI, OpenAIError
+ main
+
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "eduai-chave-local-de-desenvolvimento")
 app.config["MAX_CONTENT_LENGTH"] = 64 * 1024  # Evita payloads grandes demais.
@@ -29,8 +33,10 @@ AI_NAME = "EduAI"
 MAX_MESSAGE_LENGTH = 1200
 MAX_HISTORY_MESSAGES = 20
 SEARCH_TIMEOUT = 8
+<<<<<< codex/criar-aplicacao-web-eduai-com-flask-up9yx1
 GROQ_BASE_URL = os.environ.get("GROQ_BASE_URL", "https://api.groq.com/openai/v1")
 GROQ_MODEL = os.environ.get("GROQ_MODEL", "llama-3.1-8b-instant")
+ main
 
 
 def get_history() -> List[Dict[str, str]]:
@@ -124,41 +130,59 @@ def fallback_response(user_message: str, search_results: List[Dict[str, str]]) -
         for index, result in enumerate(search_results, start=1):
             lines.append(f"{index}. {result['title']}: {result['snippet'] or 'Sem resumo disponível.'}")
             lines.append(f"   Fonte: {result['url']}")
+ codex/criar-aplicacao-web-eduai-com-flask-up9yx1
         lines.append(
             "\nA chave da Groq não está configurada. "
             "Configure GROQ_API_KEY para eu transformar esses dados em uma resposta mais completa."
         )
+        lines.append("\nConfigure OPENAI_API_KEY para eu transformar esses dados em uma resposta mais completa.")
+ main
         return "\n".join(lines)
 
     return (
         f"Olá! Eu sou a {AI_NAME}. Recebi sua mensagem: “{user_message}”. "
+ codex/criar-aplicacao-web-eduai-com-flask-up9yx1
         "A chave da Groq não está configurada. Para respostas inteligentes, "
         "configure a variável de ambiente GROQ_API_KEY. "
+        "Para respostas inteligentes com modelo de linguagem, configure a variável de ambiente OPENAI_API_KEY. "
+ main
         "Enquanto isso, posso manter o histórico da sessão e demonstrar o fluxo do chat."
     )
 
 
 def generate_ai_response(user_message: str) -> Dict[str, Any]:
+ codex/criar-aplicacao-web-eduai-com-flask-up9yx1
     """Gera a resposta com Groq quando disponível e usa fallback seguro se necessário."""
     search_results = search_internet(user_message) if should_search(user_message) else []
     api_key = os.environ.get("GROQ_API_KEY")
+=======
+    """Gera a resposta com OpenAI quando disponível e usa fallback seguro se necessário."""
+    search_results = search_internet(user_message) if should_search(user_message) else []
+    api_key = os.environ.get("OPENAI_API_KEY")
+ main
 
     if not api_key:
         return {"reply": fallback_response(user_message, search_results), "sources": search_results}
 
     try:
+ codex/criar-aplicacao-web-eduai-com-flask-up9yx1
         client = OpenAI(
             api_key=api_key,
             base_url=GROQ_BASE_URL,
         )
         completion = client.chat.completions.create(
             model=GROQ_MODEL,
+        client = OpenAI(api_key=api_key)
+        completion = client.chat.completions.create(
+            model=os.environ.get("OPENAI_MODEL", "gpt-4o-mini"),
+ main
             messages=build_prompt(user_message, search_results),
             temperature=0.7,
             max_tokens=700,
         )
         reply = completion.choices[0].message.content or "Não consegui gerar uma resposta agora."
         return {"reply": reply, "sources": search_results}
+< codex/criar-aplicacao-web-eduai-com-flask-up9yx1
     except AuthenticationError as exc:
         app.logger.warning("Chave da Groq inválida ou não autorizada: %s", exc)
         return {
@@ -196,6 +220,11 @@ def generate_ai_response(user_message: str) -> Dict[str, Any]:
         app.logger.warning("Falha ao gerar resposta com a Groq: %s", exc)
         return {
             "reply": "Desculpe, tive um problema ao consultar a Groq. Tente novamente em instantes.",
+    except (OpenAIError, requests.RequestException, KeyError, IndexError) as exc:
+        app.logger.warning("Falha ao gerar resposta da IA: %s", exc)
+        return {
+            "reply": "Desculpe, tive um problema ao consultar a IA. Tente novamente em instantes.",
+ main
             "sources": search_results,
         }
 
