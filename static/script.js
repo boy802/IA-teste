@@ -67,6 +67,9 @@ form.addEventListener('submit', async (event) => {
     }
 
     let answer = data.answer;
+if (data.search_performed) {
+  answer = `🔎 Pesquisa web realizada.\n\n${answer}`;
+}
     if (data.sources && data.sources.length) {
       const sources = data.sources.map((source, index) => `${index + 1}. ${source.title} - ${source.url}`).join('\n');
       answer += `\n\nFontes utilizadas:\n${sources}`;
