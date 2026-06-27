@@ -1,5 +1,5 @@
 """
-EduAI - assistente educacional com Flask + Groq estável.
+EduAI - assistente educacional com Groq estável.
 """
 from __future__ import annotations
 
@@ -26,26 +26,26 @@ logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
 logger = logging.getLogger("eduai")
 
 # =========================
-# GROQ
+# GROQ CONFIG (CORRIGIDO)
 # =========================
 
 API_KEY = os.getenv("GROQ_API_KEY", "")
-BASE_URL = "https://api.groq.com/openai/v1"
-MODEL = os.getenv("MODEL", "llama3-8b-8192")
 
 client = OpenAI(
     api_key=API_KEY,
-    base_url=BASE_URL,
+    base_url="https://api.groq.com/openai/v1",
 )
 
+MODEL = os.getenv("MODEL", "llama3-8b-8192")
+
 # =========================
-# TAVILY
+# TAVILY (opcional)
 # =========================
 
 tavily_client = TavilyClient(api_key=os.getenv("TAVILY_API_KEY", ""))
 
 # =========================
-# PROMPT
+# SYSTEM PROMPT
 # =========================
 
 SYSTEM_PROMPT = """
@@ -67,7 +67,7 @@ def get_history():
     return session["history"]
 
 # =========================
-# HOME (NÃO QUEBRA MAIS)
+# HOME
 # =========================
 
 @app.route("/")
@@ -78,7 +78,7 @@ def index():
         return "EduAI rodando ✔", 200
 
 # =========================
-# CHAT
+# CHAT (GROQ CORRETO)
 # =========================
 
 @app.route("/api/chat", methods=["POST"])
@@ -93,13 +93,8 @@ def chat():
 
     messages = [{"role": "system", "content": SYSTEM_PROMPT}]
 
-    # histórico seguro
     for m in history[-10:]:
-        if isinstance(m, dict) and m.get("role") and m.get("content"):
-            messages.append({
-                "role": m["role"],
-                "content": str(m["content"])
-            })
+        messages.append(m)
 
     messages.append({"role": "user", "content": message})
 
@@ -113,7 +108,7 @@ def chat():
         answer = resp.choices[0].message.content
 
     except Exception as e:
-        logger.error(f"Erro IA: {e}")
+        logger.error(f"Erro Groq: {e}")
         return jsonify({
             "error": "Erro na IA",
             "details": str(e)
@@ -123,9 +118,7 @@ def chat():
     history.append({"role": "assistant", "content": answer})
     session["history"] = history
 
-    return jsonify({
-        "answer": answer
-    })
+    return jsonify({"answer": answer})
 
 # =========================
 # CLEAR
@@ -171,7 +164,7 @@ def keep_alive():
 threading.Thread(target=keep_alive, daemon=True).start()
 
 # =========================
-# MAIN
+# RUN
 # =========================
 
 if __name__ == "__main__":
