@@ -15,7 +15,7 @@ from openai import OpenAI
 from tavily import TavilyClient
 
 # =========================
-# FLASK CONFIG
+# FLASK
 # =========================
 
 app = Flask(__name__)
@@ -26,13 +26,12 @@ logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
 logger = logging.getLogger("eduai")
 
 # =========================
-# GROQ CONFIG FIXADO
+# GROQ
 # =========================
 
 API_KEY = os.getenv("GROQ_API_KEY", "")
-
 BASE_URL = "https://api.groq.com/openai/v1"
-MODEL = os.getenv("MODEL", "llama-3.1-8b-instant")
+MODEL = os.getenv("MODEL", "llama3-8b-8192")
 
 client = OpenAI(
     api_key=API_KEY,
@@ -52,13 +51,7 @@ tavily_client = TavilyClient(api_key=os.getenv("TAVILY_API_KEY", ""))
 SYSTEM_PROMPT = """
 Você é a EduAI, uma IA educacional clara e objetiva.
 Responda em português do Brasil.
-Use contexto de pesquisa quando disponível.
 """.strip()
-
-RECENT_KEYWORDS = [
-    "atual", "agora", "hoje", "ontem", "recente", "notícia",
-    "2025", "2026", "preço", "valor", "resultado", "lançamento"
-]
 
 # =========================
 # UTILS
@@ -73,37 +66,19 @@ def get_history():
         session["history"] = []
     return session["history"]
 
-
-def should_search_web(message: str) -> bool:
-    msg = message.lower()
-    return any(k in msg for k in RECENT_KEYWORDS)
-
 # =========================
-# WEB SEARCH
+# HOME (NÃO QUEBRA MAIS)
 # =========================
 
-def search_web(query: str, max_results: int = 5):
+@app.route("/")
+def index():
     try:
-        res = tavily_client.search(
-            query=query,
-            search_depth="basic",
-            max_results=max_results
-        )
-
-        return [
-            {
-                "title": r.get("title", ""),
-                "url": r.get("url", ""),
-                "snippet": r.get("content", "")
-            }
-            for r in res.get("results", [])
-        ]
-    except Exception as e:
-        logger.warning(f"Tavily error: {e}")
-        return []
+        return render_template("index.html")
+    except Exception:
+        return "EduAI rodando ✔", 200
 
 # =========================
-# ROUTE CHAT (FIXADO GROQ)
+# CHAT
 # =========================
 
 @app.route("/api/chat", methods=["POST"])
@@ -116,25 +91,11 @@ def chat():
 
     history = get_history()
 
-    web_results = []
-    web_context = ""
-
-    if should_search_web(message):
-        web_results = search_web(message)
-
-    if web_results:
-        web_context = "\n".join(
-            f"{r['title']} - {r['snippet']}" for r in web_results
-        )
-
     messages = [{"role": "system", "content": SYSTEM_PROMPT}]
 
-    if web_context:
-        messages.append({"role": "system", "content": web_context})
-
-    # history seguro (SEM quebrar Groq)
+    # histórico seguro
     for m in history[-10:]:
-        if isinstance(m, dict) and "role" in m and "content" in m:
+        if isinstance(m, dict) and m.get("role") and m.get("content"):
             messages.append({
                 "role": m["role"],
                 "content": str(m["content"])
@@ -147,13 +108,12 @@ def chat():
             model=MODEL,
             messages=messages,
             temperature=0.7,
-            timeout=30,
         )
 
         answer = resp.choices[0].message.content
 
     except Exception as e:
-        logger.error(f"Groq error: {e}")
+        logger.error(f"Erro IA: {e}")
         return jsonify({
             "error": "Erro na IA",
             "details": str(e)
@@ -164,21 +124,32 @@ def chat():
     session["history"] = history
 
     return jsonify({
-        "answer": answer,
-        "sources": web_results
+        "answer": answer
     })
 
+# =========================
+# CLEAR
+# =========================
 
 @app.route("/api/clear", methods=["POST"])
 def clear():
     session["history"] = []
     return jsonify({"ok": True})
 
+# =========================
+# HEALTH
+# =========================
+
+@app.route("/health")
+def health():
+    return jsonify({
+        "status": "ok",
+        "model": MODEL
+    })
 
 @app.route("/ping")
 def ping():
     return "pong", 200
-
 
 # =========================
 # KEEP ALIVE
@@ -199,6 +170,9 @@ def keep_alive():
 
 threading.Thread(target=keep_alive, daemon=True).start()
 
+# =========================
+# MAIN
+# =========================
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.getenv("PORT", 5000)))
