@@ -1,5 +1,5 @@
 """
-EduAI - assistente educacional com Groq estável.
+EduAI - assistente educacional com Groq estável + guardrails.
 """
 from __future__ import annotations
 
@@ -26,7 +26,7 @@ logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
 logger = logging.getLogger("eduai")
 
 # =========================
-# GROQ CONFIG (CORRIGIDO)
+# GROQ CONFIG
 # =========================
 
 API_KEY = os.getenv("GROQ_API_KEY", "")
@@ -39,7 +39,7 @@ client = OpenAI(
 MODEL = os.getenv("MODEL", "llama3-8b-8192")
 
 # =========================
-# TAVILY (opcional)
+# TAVILY
 # =========================
 
 tavily_client = TavilyClient(api_key=os.getenv("TAVILY_API_KEY", ""))
@@ -51,7 +51,49 @@ tavily_client = TavilyClient(api_key=os.getenv("TAVILY_API_KEY", ""))
 SYSTEM_PROMPT = """
 Você é a EduAI, uma IA educacional clara e objetiva.
 Responda em português do Brasil.
+Nunca diga que não tem criador ou que é consciente.
 """.strip()
+
+# =========================
+# GUARDRAILS (ANTI-ALUCINAÇÃO)
+# =========================
+
+SAFE_ANSWERS = {
+    "creator": "Eu fui desenvolvida como parte do projeto EduAI pelo Santiago Batista.",
+    "identity": "Sou a EduAI, um assistente educacional baseado em modelos de linguagem."
+}
+
+PATTERNS = {
+    "creator": [
+        "quem te criou", "quem criou você", "quem te fez", "quem desenvolveu você"
+    ],
+    "identity": [
+        "você é consciente", "você pensa", "você sente", "você é humano"
+    ]
+}
+
+def detect_intent(text: str):
+    text = text.lower()
+    for intent, keywords in PATTERNS.items():
+        if any(k in text for k in keywords):
+            return intent
+    return None
+
+
+def validate_answer(answer: str) -> str:
+    bad_phrases = [
+        "não tenho criador",
+        "sou uma entidade consciente",
+        "fui criado por outra ia",
+        "não fui criado por humanos"
+    ]
+
+    lower = answer.lower()
+    for bad in bad_phrases:
+        if bad in lower:
+            return "Desculpe, não posso fornecer essa informação com precisão."
+
+    return answer
 
 # =========================
 # UTILS
@@ -78,7 +120,7 @@ def index():
         return "EduAI rodando ✔", 200
 
 # =========================
-# CHAT (GROQ CORRETO)
+# CHAT
 # =========================
 
 @app.route("/api/chat", methods=["POST"])
@@ -89,12 +131,20 @@ def chat():
     if not message:
         return jsonify({"error": "Mensagem vazia"}), 400
 
+    # =========================
+    # GUARDRAIL 1: respostas fixas
+    # =========================
+    intent = detect_intent(message)
+    if intent:
+        return jsonify({"answer": SAFE_ANSWERS[intent]})
+
     history = get_history()
 
     messages = [{"role": "system", "content": SYSTEM_PROMPT}]
 
     for m in history[-10:]:
-        messages.append(m)
+        if isinstance(m, dict):
+            messages.append(m)
 
     messages.append({"role": "user", "content": message})
 
@@ -106,6 +156,11 @@ def chat():
         )
 
         answer = resp.choices[0].message.content
+
+        # =========================
+        # GUARDRAIL 2: validação final
+        # =========================
+        answer = validate_answer(answer)
 
     except Exception as e:
         logger.error(f"Erro Groq: {e}")
