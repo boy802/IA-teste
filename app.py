@@ -1,5 +1,5 @@
 """
-EduAI - assistente educacional com Flask e Groq/OpenAI compatível.
+EduAI - assistente educacional com Flask + Groq estável.
 """
 from __future__ import annotations
 
@@ -9,7 +9,6 @@ import re
 import threading
 import time
 import requests
-from typing import Any
 
 from flask import Flask, jsonify, render_template, request, session
 from openai import OpenAI
@@ -27,11 +26,12 @@ logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
 logger = logging.getLogger("eduai")
 
 # =========================
-# API CONFIG (GROQ / OPENAI / OPENROUTER COMPAT)
+# GROQ CONFIG FIXADO
 # =========================
 
-API_KEY = os.getenv("GROQ_API_KEY") or os.getenv("OPENROUTER_API_KEY") or ""
-BASE_URL = os.getenv("BASE_URL", "https://api.groq.com/openai/v1")
+API_KEY = os.getenv("GROQ_API_KEY", "")
+
+BASE_URL = "https://api.groq.com/openai/v1"
 MODEL = os.getenv("MODEL", "llama-3.1-8b-instant")
 
 client = OpenAI(
@@ -40,7 +40,7 @@ client = OpenAI(
 )
 
 # =========================
-# TAVILY (INTERNET)
+# TAVILY
 # =========================
 
 tavily_client = TavilyClient(api_key=os.getenv("TAVILY_API_KEY", ""))
@@ -56,43 +56,27 @@ Use contexto de pesquisa quando disponível.
 """.strip()
 
 RECENT_KEYWORDS = [
-    "atual", "agora", "hoje", "ontem", "recente", "recentes",
-    "última", "últimas", "último", "últimos",
-    "notícia", "notícias",
-    "2025", "2026",
-    "preço", "cotação", "valor",
-    "placar", "resultado",
-    "lançamento",
-    "dólar", "dolar",
-    "euro",
-    "bolsa",
-    "quem é o presidente",
+    "atual", "agora", "hoje", "ontem", "recente", "notícia",
+    "2025", "2026", "preço", "valor", "resultado", "lançamento"
 ]
-
-# =========================
-# ERROR CLASS
-# =========================
-
-class SearchError(RuntimeError):
-    pass
 
 # =========================
 # UTILS
 # =========================
 
-def get_history() -> list[dict[str, str]]:
+def clean_text(text: str) -> str:
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def get_history():
     if "history" not in session:
         session["history"] = []
     return session["history"]
 
 
 def should_search_web(message: str) -> bool:
-    text = message.lower()
-    return any(k in text for k in RECENT_KEYWORDS)
-
-
-def clean_text(text: str) -> str:
-    return re.sub(r"\s+", " ", text).strip()
+    msg = message.lower()
+    return any(k in msg for k in RECENT_KEYWORDS)
 
 # =========================
 # WEB SEARCH
@@ -114,39 +98,13 @@ def search_web(query: str, max_results: int = 5):
             }
             for r in res.get("results", [])
         ]
-
     except Exception as e:
-        raise SearchError(f"Falha na busca web: {e}")
+        logger.warning(f"Tavily error: {e}")
+        return []
 
 # =========================
-# CONTEXT BUILDER
+# ROUTE CHAT (FIXADO GROQ)
 # =========================
-
-def build_web_context(results: list[dict[str, str]]) -> str:
-    if not results:
-        return ""
-
-    lines = ["Contexto de pesquisa web recente:"]
-
-    for i, r in enumerate(results, 1):
-        lines.append(
-            f"Fonte {i}: {r['title']}\nURL: {r['url']}\nResumo: {r['snippet']}"
-        )
-
-    return "\n\n".join(lines)
-
-# =========================
-# ROUTES
-# =========================
-
-@app.route("/")
-def index():
-    return render_template(
-        "index.html",
-        history=get_history(),
-        message_count=len(get_history()),
-    )
-
 
 @app.route("/api/chat", methods=["POST"])
 def chat():
@@ -161,21 +119,27 @@ def chat():
     web_results = []
     web_context = ""
 
-    search_performed = should_search_web(message)
+    if should_search_web(message):
+        web_results = search_web(message)
 
-    if search_performed:
-        try:
-            web_results = search_web(message)
-            web_context = build_web_context(web_results)
-        except SearchError as e:
-            logger.warning("Web falhou: %s", e)
+    if web_results:
+        web_context = "\n".join(
+            f"{r['title']} - {r['snippet']}" for r in web_results
+        )
 
     messages = [{"role": "system", "content": SYSTEM_PROMPT}]
 
     if web_context:
         messages.append({"role": "system", "content": web_context})
 
-    messages.extend(history[-10:])
+    # history seguro (SEM quebrar Groq)
+    for m in history[-10:]:
+        if isinstance(m, dict) and "role" in m and "content" in m:
+            messages.append({
+                "role": m["role"],
+                "content": str(m["content"])
+            })
+
     messages.append({"role": "user", "content": message})
 
     try:
@@ -185,20 +149,23 @@ def chat():
             temperature=0.7,
             timeout=30,
         )
+
         answer = resp.choices[0].message.content
+
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        logger.error(f"Groq error: {e}")
+        return jsonify({
+            "error": "Erro na IA",
+            "details": str(e)
+        }), 500
 
     history.append({"role": "user", "content": message})
     history.append({"role": "assistant", "content": answer})
     session["history"] = history
-    session.modified = True
 
     return jsonify({
         "answer": answer,
-        "sources": web_results,
-        "search_performed": search_performed,
-        "message_count": len(history),
+        "sources": web_results
     })
 
 
@@ -208,32 +175,13 @@ def clear():
     return jsonify({"ok": True})
 
 
-@app.route("/test-search")
-def test_search():
-    q = clean_text(request.args.get("q", "preço do dólar hoje"))
-
-    try:
-        results = search_web(q)
-        return jsonify({"ok": True, "results": results})
-    except SearchError as e:
-        return jsonify({"ok": False, "error": str(e)}), 502
-
-
-@app.route("/health")
-def health():
-    return jsonify({
-        "status": "ok",
-        "model": MODEL,
-    })
-
-
 @app.route("/ping")
 def ping():
     return "pong", 200
 
 
 # =========================
-# KEEP ALIVE (SAFE VERSION)
+# KEEP ALIVE
 # =========================
 
 URL = os.getenv("RENDER_EXTERNAL_URL", "")
@@ -244,19 +192,13 @@ def keep_alive():
 
     while True:
         try:
-            r = requests.get(URL + "/ping", timeout=10)
-            print(f"[KEEP-ALIVE] /ping -> {r.status_code}")
-        except Exception as e:
-            print(f"[KEEP-ALIVE] erro: {e}")
-
+            requests.get(URL + "/ping", timeout=10)
+        except:
+            pass
         time.sleep(300)
 
 threading.Thread(target=keep_alive, daemon=True).start()
 
 
-# =========================
-# MAIN
-# =========================
-
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.getenv("PORT", 5000)), debug=True)
+    app.run(host="0.0.0.0", port=int(os.getenv("PORT", 5000)))
